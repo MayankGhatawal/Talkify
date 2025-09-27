@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
-import { Image, Send, X } from "lucide-react";
+// ✅ Alias the icon so it doesn't conflict with the browser's Image()
+import { Image as ImageIcon, Send, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 const MessageInput = () => {
@@ -9,20 +10,23 @@ const MessageInput = () => {
   const fileInputRef = useRef(null);
   const { sendMessage } = useChatStore();
 
-  const compressImage = (file, maxSizeKB = 30) => {
+  // ---- Compress image to about 20 KB ----
+  const compressImage = (file, maxSizeKB = 20) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const img = new Image();
+        // ✅ Use window.Image to avoid conflict with Lucide icon
+        const img = new window.Image();
         img.onload = () => {
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d");
 
-          // Resize logic (optional, keep within reasonable bounds)
+          // Resize large images to avoid huge files
           const MAX_WIDTH = 800;
           const MAX_HEIGHT = 800;
           let width = img.width;
           let height = img.height;
+
           if (width > MAX_WIDTH || height > MAX_HEIGHT) {
             if (width > height) {
               height *= MAX_WIDTH / width;
@@ -37,19 +41,17 @@ const MessageInput = () => {
           canvas.height = height;
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Quality iteration to reach ~30 KB
+          // Iteratively lower quality until Base64 size ≈ 20 KB
           let quality = 0.8;
           const step = 0.05;
-          let compressedData = canvas.toDataURL("image/jpeg", quality);
-          while (
-            compressedData.length / 1024 > maxSizeKB &&
-            quality > 0.05
-          ) {
+          let base64 = canvas.toDataURL("image/jpeg", quality);
+
+          while (base64.length / 1024 > maxSizeKB && quality > 0.05) {
             quality -= step;
-            compressedData = canvas.toDataURL("image/jpeg", quality);
+            base64 = canvas.toDataURL("image/jpeg", quality);
           }
 
-          resolve(compressedData);
+          resolve(base64);
         };
         img.onerror = reject;
         img.src = e.target.result;
@@ -62,13 +64,15 @@ const MessageInput = () => {
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
     if (!file.type.startsWith("image/")) {
       toast.error("Please select an image file");
       return;
     }
+
     try {
-      const compressedBase64 = await compressImage(file, 30);
-      setImagePreview(compressedBase64);
+      const compressed = await compressImage(file, 20); // ~20 KB target
+      setImagePreview(compressed);
     } catch (err) {
       console.error("Image compression failed:", err);
       toast.error("Failed to compress image");
@@ -89,6 +93,8 @@ const MessageInput = () => {
         text: text.trim(),
         image: imagePreview,
       });
+
+      // Clear form
       setText("");
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -109,7 +115,8 @@ const MessageInput = () => {
             />
             <button
               onClick={removeImage}
-              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-base-300 flex items-center justify-center"
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-base-300
+              flex items-center justify-center"
               type="button"
             >
               <X className="size-3" />
@@ -142,7 +149,7 @@ const MessageInput = () => {
             }`}
             onClick={() => fileInputRef.current?.click()}
           >
-            <Image size={20} />
+            <ImageIcon size={20} />
           </button>
         </div>
         <button
